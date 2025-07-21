@@ -37,7 +37,7 @@ void ModeStabilize::run()
     auto st = motors->get_spool_state();
     if (st != AP_Motors::SpoolState::SHUT_DOWN) {     // = 4개 상태에 모두 적용
     // 0-1  →  0.5-1.0 (1500-2000 µs)
-        pilot_desired_throttle = 0.5f + 0.5f * constrain_float(pilot_desired_throttle, 0.0f, 1.0f);
+        pilot_desired_throttle = 0.35f + 0.65f * constrain_float(pilot_desired_throttle, 0.0f, 1.0f);
     }
     
     static uint32_t dbg_ms = 0;
