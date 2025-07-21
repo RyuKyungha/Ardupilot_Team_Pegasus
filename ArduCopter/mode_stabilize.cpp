@@ -33,20 +33,32 @@ void ModeStabilize::run()
     }
 
     float pilot_desired_throttle = get_pilot_desired_throttle();
+    
+    auto st = motors->get_spool_state();
+    if (st != AP_Motors::SpoolState::SHUT_DOWN) {     // = 4개 상태에 모두 적용
+    // 0-1  →  0.5-1.0 (1500-2000 µs)
+        pilot_desired_throttle = 0.5f + 0.5f * constrain_float(pilot_desired_throttle, 0.0f, 1.0f);
+    }
+    
+    static uint32_t dbg_ms = 0;
+    if (AP_HAL::millis() - dbg_ms > 200) {
+        gcs().send_text(MAV_SEVERITY_INFO, "pDes=%.3f", pilot_desired_throttle);
+        dbg_ms = AP_HAL::millis();
+    }
 
     switch (motors->get_spool_state()) {
     case AP_Motors::SpoolState::SHUT_DOWN:
         // Motors Stopped
         attitude_control->reset_yaw_target_and_rate();
         attitude_control->reset_rate_controller_I_terms();
-        pilot_desired_throttle = 0.0f;
+        pilot_desired_throttle = 0.5f;
         break;
 
     case AP_Motors::SpoolState::GROUND_IDLE:
         // Landed
         attitude_control->reset_yaw_target_and_rate();
         attitude_control->reset_rate_controller_I_terms_smoothly();
-        pilot_desired_throttle = 0.0f;
+        pilot_desired_throttle = 0.5f;
         break;
 
     case AP_Motors::SpoolState::THROTTLE_UNLIMITED:
