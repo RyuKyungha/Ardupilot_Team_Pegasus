@@ -96,30 +96,16 @@ void AP_MotorsTri::output_to_motors()
     switch (_spool_state) {
         case SpoolState::SHUT_DOWN:
             // sends minimum values out to the motors
-            /*rc_write(AP_MOTORS_MOT_1, output_to_pwm(0));
+            rc_write(AP_MOTORS_MOT_1, output_to_pwm(0));
             rc_write(AP_MOTORS_MOT_2, output_to_pwm(0));
-            rc_write(AP_MOTORS_MOT_4, output_to_pwm(0));*/
-            if (armed()) {                                 // ← 단 한 줄
-            // 이미 ARM 됐지만 FSM 전환 전 1프레임: 1500µs 유지
-                rc_write(AP_MOTORS_MOT_1, output_to_pwm(0.5f));
-                rc_write(AP_MOTORS_MOT_2, output_to_pwm(0.5f));
-                rc_write(AP_MOTORS_MOT_4, output_to_pwm(0.5f));
-            } else {
-            // 진짜 디스암 상태
-                rc_write(AP_MOTORS_MOT_1, output_to_pwm(0));
-                rc_write(AP_MOTORS_MOT_2, output_to_pwm(0));
-                rc_write(AP_MOTORS_MOT_4, output_to_pwm(0));
-            }
+            rc_write(AP_MOTORS_MOT_4, output_to_pwm(0));
             rc_write_angle(AP_MOTORS_CH_TRI_YAW, 0);
             break;
         case SpoolState::GROUND_IDLE:
-            set_actuator_with_slew(_actuator[1], 0.5);
-            set_actuator_with_slew(_actuator[2], 0.5);
-            set_actuator_with_slew(_actuator[4], 0.5);
             // sends output to motors when armed but not flying
-            /*set_actuator_with_slew(_actuator[1], actuator_spin_up_to_ground_idle());
+            set_actuator_with_slew(_actuator[1], actuator_spin_up_to_ground_idle());
             set_actuator_with_slew(_actuator[2], actuator_spin_up_to_ground_idle());
-            set_actuator_with_slew(_actuator[4], actuator_spin_up_to_ground_idle());*/
+            set_actuator_with_slew(_actuator[4], actuator_spin_up_to_ground_idle());
             rc_write(AP_MOTORS_MOT_1, output_to_pwm(_actuator[1]));
             rc_write(AP_MOTORS_MOT_2, output_to_pwm(_actuator[2]));
             rc_write(AP_MOTORS_MOT_4, output_to_pwm(_actuator[4]));
