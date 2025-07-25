@@ -12,14 +12,7 @@ ModeDrive::ModeDrive() : Mode() {}
 
 bool ModeDrive::init(bool ignore_checks)
 {
-    hal.rcout->write(8, 1900);
-    hal.rcout->write(9, 1100);
-    // 4초간 800스텝으로 천천히
-    for (int i = 0; i <= 800; i++) {
-        hal.rcout->write(8, 1900 - i);  // 1900 → 1100
-        hal.rcout->write(9, 1100 + i);  // 1100 → 1900
-        hal.scheduler->delay(5);           // 5ms 블로킹
-    }
+    _interp_step  = 0;
     // 초기화: 특별한 검사는 생략
     gcs().send_text(MAV_SEVERITY_INFO, "Drive mode running");
     return true;
@@ -35,12 +28,20 @@ void ModeDrive::run()
 {
     static uint32_t last_log_ms = 0;
     uint32_t now = AP_HAL::millis();
-
-    
     if (!copter.motors->armed()) {
         return;
     }
-    
+    if (_interp_step <= 800) {
+        int i = _interp_step++;
+        hal.rcout->write(0, 1500);  // Motor1: 좌측 바퀴
+        hal.rcout->write(2, 1500); // Motor2: 우측 바퀴
+        hal.rcout->write(9, 1900 - i);
+        hal.rcout->write(8, 1100 + i);
+    }
+
+    if (_interp_step < 800) {
+        return;
+    }
     // 조종기 입력 정규화: [-1.0 ~ +1.0]
     const float V = channel_throttle->norm_input();  // 속도 크기 (-1.0~+1.0): 후진~전진
     const float F = channel_pitch->norm_input(); // 전/후 속도 결정 

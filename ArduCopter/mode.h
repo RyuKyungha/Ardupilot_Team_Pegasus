@@ -1897,6 +1897,7 @@ public:
 
 private:
     void write_drive_motors(int16_t left_pwm, int16_t right_pwm);
+    uint16_t _interp_step;
 };
 #endif
 

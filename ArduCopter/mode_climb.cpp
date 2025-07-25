@@ -18,6 +18,8 @@ ModeClimb::ModeClimb() : Mode() {}
 
 bool ModeClimb::init(bool ignore_checks)
 {
+    hal.rcout->write(9, 1100);
+    hal.rcout->write(8, 1900);
     gcs().send_text(MAV_SEVERITY_INFO, "Climb mode running");
     
     // 1. 채널 번호 → 기능 저장
