@@ -83,7 +83,9 @@ public:
         LOITER =        5,  // automatic horizontal acceleration with automatic throttle
         RTL =           6,  // automatic return to launching point
         CIRCLE =        7,  // automatic circular flight with automatic throttle
+        DRIVE =         8,  // New mode to drive
         LAND =          9,  // automatic landing with horizontal position control
+        CLIMB =        10,  // New mode to climb
         DRIFT =        11,  // semi-autonomous position, yaw and throttle control
         SPORT =        13,  // manual earth-frame angular rate control with manual throttle
         FLIP =         14,  // automatically flip the vehicle on the roll axis
@@ -1870,6 +1872,61 @@ private:
     HAL_Semaphore msem;
     bool shutdown;
 };
+#endif
+
+#if MODE_DRIVE_ENABLED
+class ModeDrive : public Mode {
+public:
+    ModeDrive();
+
+    using Mode::Mode;
+    Number mode_number() const override { return Number::DRIVE; }
+
+    bool init(bool ignore_checks) override;
+    void run() override;
+    void exit() override;
+
+    bool requires_GPS() const override { return false; }
+    bool has_manual_throttle() const override { return true; }
+    bool allows_arming(AP_Arming::Method method) const override { return true; }
+    bool is_autopilot() const override { return false; }
+    bool has_user_takeoff(bool must_navigate) const override { return false; }
+
+    const char* name() const override { return "DRIVE"; }
+    const char* name4() const override { return "DRIV"; }
+
+private:
+    void write_drive_motors(int16_t left_pwm, int16_t right_pwm);
+};
+#endif
+
+#if MODE_CLIMB_ENABLED
+class ModeClimb : public Mode {
+public:
+    ModeClimb();
+
+    using Mode::Mode;
+    Number mode_number() const override { return Number::CLIMB; }
+
+    bool init(bool ignore_checks) override;
+    void run() override;
+    void exit() override;
+
+    bool requires_GPS() const override { return false; }
+    bool has_manual_throttle() const override { return true; }
+    bool allows_arming(AP_Arming::Method method) const override { return true; }
+    bool is_autopilot() const override { return false; }
+    bool has_user_takeoff(bool must_navigate) const override { return false; }
+
+    const char* name() const override { return "CLIMB"; }
+    const char* name4() const override { return "CLIM"; }
+
+private:
+    void write_drive_motors(int16_t left_pwm, int16_t right_pwm);
+    SRV_Channel::Function tail_orig_fn = SRV_Channel::k_none;
+};
+float cubic_interpolate(float x, float x0, float x1, float y0, float y1);
+float get_thrust_from_pitch(float thetaDeg);
 #endif
 
 // modes below rely on Guided mode so must be declared at the end (instead of in alphabetical order)

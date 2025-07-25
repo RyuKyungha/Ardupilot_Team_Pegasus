@@ -23,6 +23,13 @@
 //#define MODE_THROW_ENABLED    0            // disable throw mode support
 //#define MODE_ZIGZAG_ENABLED   0            // disable zigzag mode support
 //#define OSD_ENABLED           0            // disable on-screen-display support
+#ifndef MODE_DRIVE_ENABLED
+# define MODE_DRIVE_ENABLED 1
+#endif
+
+#ifndef MODE_CLIMB_ENABLED
+# define MODE_CLIMB_ENABLED 1
+#endif
 
 // features below are disabled by default on all boards
 //#define CAL_ALWAYS_REBOOT                         // flight controller will reboot after compass or accelerometer calibration completes

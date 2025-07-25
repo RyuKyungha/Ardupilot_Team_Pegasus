@@ -1492,6 +1492,12 @@ uint8_t GCS_MAVLINK_Copter::send_available_mode(uint8_t index) const
 #if MODE_TURTLE_ENABLED
         &copter.mode_turtle,
 #endif
+#if MODE_DRIVE_ENABLED
+        &copter.mode_drive,
+#endif
+#if MODE_CLIMB_ENABLED
+        &copter.mode_climb,
+#endif
     };
 
     const uint8_t base_mode_count = ARRAY_SIZE(modes);

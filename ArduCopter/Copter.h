@@ -21,6 +21,7 @@
 // Header includes
 ////////////////////////////////////////////////////////////////////////////////
 
+
 #include <cmath>
 #include <stdio.h>
 #include <stdarg.h>
@@ -227,6 +228,8 @@ public:
     friend class ModeZigZag;
     friend class ModeAutorotate;
     friend class ModeTurtle;
+    friend class ModeDrive;
+    friend class ModeClimb;
 
     friend class _AutoTakeoff;
 
@@ -1101,6 +1104,12 @@ private:
 #endif
 #if MODE_TURTLE_ENABLED
     ModeTurtle mode_turtle;
+#endif
+#if MODE_DRIVE_ENABLED
+    ModeDrive mode_drive;
+#endif
+#if MODE_CLIMB_ENABLED
+    ModeClimb mode_climb;
 #endif
 
     // mode.cpp
