@@ -19,28 +19,19 @@ ModeClimb::ModeClimb() : Mode() {}
 bool ModeClimb::init(bool ignore_checks)
 {
     gcs().send_text(MAV_SEVERITY_INFO, "Climb mode running");
-    
-    // 1. 채널 번호 → 기능 저장
-    tail_orig_fn = SRV_Channels::channel_function(6);
 
-    // 2. 기능 제거
-    SRV_Channels::set_default_function(6, SRV_Channel::Function::k_none);
-    SRV_Channels::update_aux_servo_function();
+    _interp_step  = 0;
 
-    gcs().send_text(MAV_SEVERITY_INFO, "CH7 function: %d", SRV_Channels::channel_function(6));
-
-    // 3. 원하는 PWM 출력 (예: tail servo 중립값)
-    hal.rcout->write(6, 1500);
+    // tail 서보 PWM 1500us 고정, 무제한 시간 동안 override
+    SRV_Channels::set_output_pwm_chan_timeout(6, 1500, 0xFFFF);
 
     return true;
 }
 
 void ModeClimb::exit()
 {
-    SRV_Channels::set_default_function(6, tail_orig_fn);
-    SRV_Channels::update_aux_servo_function();
-
-    gcs().send_text(MAV_SEVERITY_INFO, "CH7 function: %d", SRV_Channels::channel_function(6));
+    // tail override 해제: timeout=0이면 즉시 원래 기능으로 복귀
+    SRV_Channels::set_output_pwm_chan_timeout(6, 0, 0);
 
     gcs().send_text(MAV_SEVERITY_INFO, "Climb mode exited");
 }
@@ -49,6 +40,18 @@ void ModeClimb::run()
 {
     static uint32_t last_log_ms = 0;
     uint32_t now = AP_HAL::millis();
+
+    if (_interp_step <= 800) {
+        int i = _interp_step++;
+        hal.rcout->write(0, 1500);  // Motor1: 좌측 바퀴
+        hal.rcout->write(2, 1500); // Motor2: 우측 바퀴
+        hal.rcout->write(9, 1900 - i);
+        hal.rcout->write(8, 1100 + i);
+    }
+
+    if (_interp_step < 800) {
+        return;
+    }
 
     // ─────────────── 1. pitch 각도 측정 ───────────────
     // 쿼터니언 변수 선언

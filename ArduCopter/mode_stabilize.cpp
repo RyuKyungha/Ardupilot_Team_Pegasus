@@ -6,8 +6,33 @@
 
 // stabilize_run - runs the main stabilize controller
 // should be called at 100hz or more
+
+bool ModeStabilize::init(bool ignore_checks)
+{
+    // 초기화: 특별한 검사는 생략
+    gcs().send_text(MAV_SEVERITY_INFO, "Stabilize mode running");
+
+    _interp_step  = 0;
+    hal.rcout->write(9, 1100);
+    hal.rcout->write(8, 1900);
+
+    return true;
+}
+
 void ModeStabilize::run()
 {
+    if (_interp_step <= 800) {
+        int i = _interp_step++;
+        hal.rcout->write(0, 1500);  // Motor1: 좌측 바퀴
+        hal.rcout->write(2, 1500); // Motor2: 우측 바퀴
+        hal.rcout->write(9, 1100 + i);
+        hal.rcout->write(8, 1900 - i);
+    }
+
+    if (_interp_step < 800) {
+        return;
+    }
+
     // apply simple mode transform to pilot inputs
     update_simple_mode();
 

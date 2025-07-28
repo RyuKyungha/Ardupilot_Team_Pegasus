@@ -1661,6 +1661,8 @@ public:
     using Mode::Mode;
     Number mode_number() const override { return Number::STABILIZE; }
 
+    virtual bool init(bool ignore_checks) override; 
+
     virtual void run() override;
 
     bool requires_GPS() const override { return false; }
@@ -1679,7 +1681,7 @@ protected:
     const char *name4() const override { return "STAB"; }
 
 private:
-
+    uint16_t _interp_step;
 };
 
 #if FRAME_CONFIG == HELI_FRAME
@@ -1882,7 +1884,7 @@ public:
     using Mode::Mode;
     Number mode_number() const override { return Number::DRIVE; }
 
-    bool init(bool ignore_checks) override;
+    bool init(bool ignore_checks) override; 
     void run() override;
     void exit() override;
 
@@ -1897,6 +1899,7 @@ public:
 
 private:
     void write_drive_motors(int16_t left_pwm, int16_t right_pwm);
+    uint16_t _interp_step;
 };
 #endif
 
@@ -1923,7 +1926,7 @@ public:
 
 private:
     void write_drive_motors(int16_t left_pwm, int16_t right_pwm);
-    SRV_Channel::Function tail_orig_fn = SRV_Channel::k_none;
+    uint16_t _interp_step;
 };
 float cubic_interpolate(float x, float x0, float x1, float y0, float y1);
 float get_thrust_from_pitch(float thetaDeg);
