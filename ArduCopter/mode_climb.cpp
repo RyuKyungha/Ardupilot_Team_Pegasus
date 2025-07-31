@@ -20,8 +20,6 @@ bool ModeClimb::init(bool ignore_checks)
 {
     gcs().send_text(MAV_SEVERITY_INFO, "Climb mode running");
 
-    _interp_step  = 0;
-
     // tail 서보 PWM 1500us 고정, 무제한 시간 동안 override
     SRV_Channels::set_output_pwm_chan_timeout(6, 1500, 0xFFFF);
 
@@ -41,15 +39,8 @@ void ModeClimb::run()
     static uint32_t last_log_ms = 0;
     uint32_t now = AP_HAL::millis();
 
-    if (_interp_step <= 800) {
-        int i = _interp_step++;
-        hal.rcout->write(0, 1500);  // Motor1: 좌측 바퀴
-        hal.rcout->write(2, 1500); // Motor2: 우측 바퀴
-        hal.rcout->write(9, 1900 - i);
-        hal.rcout->write(8, 1100 + i);
-    }
-
-    if (_interp_step < 800) {
+    if (!interpolate_mode(2)){
+        motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::SHUT_DOWN);
         return;
     }
 

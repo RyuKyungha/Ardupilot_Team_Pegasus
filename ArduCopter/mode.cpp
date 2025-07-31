@@ -9,6 +9,40 @@
 /*
   constructor for Mode object
  */
+
+extern const AP_HAL::HAL& hal;
+bool interpolate_mode(uint8_t mode) {
+
+    static int state_pwm_ch8 = 1500;
+    static int state_pwm_ch9 = 1500;
+
+    // 목표값 
+    int target8, target9;
+    if (mode == 0 || mode == 2) {
+        // drive 또는 climb
+        target8 = 1950;
+        target9 = 1050;
+    } else if (mode == 1) {
+        // flight
+        target8 = 1100;
+        target9 = 1900;
+    } else {
+        return true;
+    }
+    bool done8 = false;
+    if      (state_pwm_ch8 < target8) state_pwm_ch8++;
+    else if (state_pwm_ch8 > target8) state_pwm_ch8--;
+    else                              done8 = true;
+
+    bool done9 = false;
+    if      (state_pwm_ch9 < target9) state_pwm_ch9++;
+    else if (state_pwm_ch9 > target9) state_pwm_ch9--;
+    else                              done9 = true;
+    hal.rcout->write(8, state_pwm_ch8); // 오른쪽 서보
+    hal.rcout->write(9, state_pwm_ch9); // 왼쪽 서보
+    return done8 && done9;
+}
+
 Mode::Mode(void) :
     g(copter.g),
     g2(copter.g2),
