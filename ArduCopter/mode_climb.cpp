@@ -74,7 +74,7 @@ void ModeClimb::run()
         last_log_ms = now;
     }
 
-    // ─────────────── 4. 주행 제어 (Drive 방식) ───────────────
+    // ─────────────── 3. 주행 제어 (Drive 방식) ───────────────
     // 조종기 입력 정규화: [-1.0 ~ +1.0]
     const float V = channel_throttle->norm_input();  // 속도 크기 (-1.0~+1.0): 후진~전진
     const float F = channel_pitch->norm_input(); // 전/후 속도 결정 

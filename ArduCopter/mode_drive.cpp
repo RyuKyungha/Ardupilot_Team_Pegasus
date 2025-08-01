@@ -14,11 +14,18 @@ bool ModeDrive::init(bool ignore_checks)
 {
     // 초기화: 특별한 검사는 생략
     gcs().send_text(MAV_SEVERITY_INFO, "Drive mode running");
+
+    // tail 서보 PWM 1500us 고정, 무제한 시간 동안 override
+    SRV_Channels::set_output_pwm_chan_timeout(6, 1500, 0xFFFF);
+
     return true;
 }
 
 void ModeDrive::exit()
 {
+    // tail override 해제: timeout=0이면 즉시 원래 기능으로 복귀
+    SRV_Channels::set_output_pwm_chan_timeout(6, 0, 0);
+
     // 모드 종료 시 추가 동작 없음
     gcs().send_text(MAV_SEVERITY_INFO, "Drive mode exited");
 }
@@ -27,12 +34,6 @@ void ModeDrive::run()
 {
     static uint32_t last_log_ms = 0;
     uint32_t now = AP_HAL::millis();
-
-    /*
-    if (!copter.motors->armed()) {
-        return;
-    }
-    */
 
     if (!interpolate_mode(0)){
         motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::SHUT_DOWN);
