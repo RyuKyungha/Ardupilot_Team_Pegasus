@@ -1,6 +1,8 @@
 #include "Copter.h"
 #include "mode.h"
 #include <AP_HAL/AP_HAL.h>
+#include <SRV_Channel/SRV_Channel.h>
+#include <AP_Math/quaternion.h>
 
 #if MODE_DRIVE_ENABLED
 
@@ -30,7 +32,7 @@ void ModeDrive::exit()
     gcs().send_text(MAV_SEVERITY_INFO, "Drive mode exited");
 }
 
-void ModeDrive::run()
+/*void ModeDrive::run()
 {
     static uint32_t last_log_ms = 0;
     uint32_t now = AP_HAL::millis();
@@ -63,6 +65,127 @@ void ModeDrive::run()
     if (now - last_log_ms > 1000) {  // 1초 간격으로만 출력
         gcs().send_text(MAV_SEVERITY_INFO, "입력값 - Throttle: %.2f, Roll: %.2f", V, W);
         gcs().send_text(MAV_SEVERITY_INFO, "PWM 출력 - Left: %d, Right: %d", pwm_L, pwm_R);
+        last_log_ms = now;
+    }
+}*/
+
+void ModeDrive::run()
+{
+    static uint32_t last_log_ms = 0;
+    const uint32_t now = AP_HAL::millis();
+
+    if (!interpolate_mode(0)) {
+        motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::SHUT_DOWN);
+        return;
+    }
+
+    /* =====================================================
+     * 1) RC3 입력만 사용 (전/후진)
+     *    RC3: 1500 중립, 1400~1600 사용
+     * ===================================================== */
+    const float rc3 = channel_pitch->norm_input();   // -1.0 ~ +1.0
+
+    // PWM 기준 forward 값 (-100 ~ +100)
+    const int16_t forward = constrain(rc3 * 100.0f, -100, 100);
+
+    /* =====================================================
+     * 2) 현재 자세 quaternion
+     * ===================================================== */
+    Quaternion q_now;
+    if (!copter.ahrs.get_quaternion(q_now)) {
+        return;
+    }
+
+    /* =====================================================
+     * 3) 목표 quaternion
+     *    (예시: 고정, 실제로는 진입 시 latch 권장)
+     * ===================================================== */
+    Quaternion q_target( // pitch 30deg
+        0.9659258f,      // w
+        0.0f,            // x
+        0.2588190f,      // y
+        0.0f             // z
+    );
+
+    /* =====================================================
+     * 4) 상대 회전 quaternion
+     * ===================================================== */
+    Quaternion q_rel = q_target.inverse() * q_now;
+
+    /* =====================================================
+     * 5) log map → rotation vector
+     * ===================================================== */
+    Vector3f rotvec;
+    const float w = q_rel.q1;
+    const float x = q_rel.q2;
+    const float y = q_rel.q3;
+    const float z = q_rel.q4;
+
+    const float sin_half = sqrtf(x*x + y*y + z*z);
+
+    if (sin_half > 1e-6f) {
+        const float angle = 2.0f * atan2f(sin_half, w);
+        const float scale = angle / sin_half;
+
+        rotvec.x = x * scale;
+        rotvec.y = y * scale;
+        rotvec.z = z * scale;
+    } else {
+        rotvec.zero();
+    }
+
+    /* =====================================================
+     * 6) u-axis (BODY frame)
+     * ===================================================== */
+    Vector3f u_axis(0.5f, 0.0f, -0.8660254f);
+    u_axis.normalize();
+
+    /* =====================================================
+     * 7) θ₂ 계산
+     * ===================================================== */
+    const float theta2 = rotvec.dot(u_axis);   // [rad]
+
+    /* =====================================================
+     * 8) Outer loop: θ₂ → θ̇₂_cmd
+     * ===================================================== */
+    const float Kp_theta = 2.5f;
+    float theta2_dot_cmd = -Kp_theta * theta2;
+    theta2_dot_cmd = constrain(theta2_dot_cmd, -1.0f, 1.0f); // rad/s 제한
+
+    /* =====================================================
+     * 9) Inner loop: θ̇₂ (gyro 사영)
+     * ===================================================== */
+    const Vector3f gyro = ahrs.get_gyro();     // rad/s
+    const float theta2_dot = gyro.dot(u_axis);
+
+    const float theta2_dot_err = theta2_dot_cmd - theta2_dot;
+
+    const float Kp_rate = 80.0f;               // PWM / (rad/s)
+    int16_t delta = (int16_t)(Kp_rate * theta2_dot_err);
+
+    // 좌/우 차등은 ±50 PWM까지만 허용
+    delta = constrain(delta, -50, 50);
+
+    /* =====================================================
+     * 10) 좌/우 바퀴 PWM (1400~1600)
+     * ===================================================== */
+    const int16_t pwm_L = constrain(1500 + forward + delta, 1400, 1600);
+    const int16_t pwm_R = constrain(1500 + forward - delta, 1400, 1600);
+
+    write_drive_motors(pwm_L, pwm_R);
+
+    /* =====================================================
+     * 11) 디버그 로그
+     * ===================================================== */
+    if (now - last_log_ms > 1000) {
+        gcs().send_text(MAV_SEVERITY_INFO,
+            "RC3: %.2f | theta2: %.3f | theta2_dot: %.3f",
+            rc3, theta2, theta2_dot);
+
+        gcs().send_text(MAV_SEVERITY_INFO,
+            "PWM L/R: %d / %d | delta: %d",
+            pwm_L, pwm_R, delta);
+
         last_log_ms = now;
     }
 }
