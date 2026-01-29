@@ -3,6 +3,7 @@
 #include <AP_HAL/AP_HAL.h>
 #include <SRV_Channel/SRV_Channel.h>
 #include <AP_Math/quaternion.h>
+#include <AP_Logger/AP_Logger.h>
 
 #if MODE_DRIVE_ENABLED
 
@@ -20,6 +21,9 @@ bool ModeDrive::init(bool ignore_checks)
     // tail 서보 PWM 1500us 고정, 무제한 시간 동안 override
     SRV_Channels::set_output_pwm_chan_timeout(6, 1500, 0xFFFF);
 
+    log_enable = true;
+    AP::logger().Write("UHD2", "event", "s", "START");
+
     return true;
 }
 
@@ -30,46 +34,12 @@ void ModeDrive::exit()
 
     // 모드 종료 시 추가 동작 없음
     gcs().send_text(MAV_SEVERITY_INFO, "Drive mode exited");
+
+    AP::logger().Write("UHD2", "event", "s", "END");
+    log_enable = false;
 }
 
-/*void ModeDrive::run()
-{
-    static uint32_t last_log_ms = 0;
-    uint32_t now = AP_HAL::millis();
-
-    if (!interpolate_mode(0)){
-        motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::SHUT_DOWN);
-        return;
-    } 
-    
-    // 조종기 입력 정규화: [-1.0 ~ +1.0]
-    const float V = channel_throttle->norm_input();  // 속도 크기 (-1.0~+1.0): 후진~전진
-    const float F = channel_pitch->norm_input(); // 전/후 속도 결정 
-    const float W = channel_roll->norm_input();  // 좌/우 회전 방향
-
-    // 속도 스케일링: [-500 ~ +500]
-    const int16_t forward = V * F * 500;
-    const int16_t turn    = V * W * 500;
-
-    // 좌/우 바퀴 속도 계산 및 제한
-    const int16_t L = constrain(forward + turn, -500, 500);
-    const int16_t R = constrain(forward - turn, -500, 500);
-
-    // PWM 출력값 계산 (중앙값 1500 기준, ±500)
-    const int16_t pwm_L = 1500 + L;  // 좌측 바퀴
-    const int16_t pwm_R = 1500 + R;  // 우측 바퀴
-
-    // 모터에 출력
-    write_drive_motors(pwm_L, pwm_R);
-
-    if (now - last_log_ms > 1000) {  // 1초 간격으로만 출력
-        gcs().send_text(MAV_SEVERITY_INFO, "입력값 - Throttle: %.2f, Roll: %.2f", V, W);
-        gcs().send_text(MAV_SEVERITY_INFO, "PWM 출력 - Left: %d, Right: %d", pwm_L, pwm_R);
-        last_log_ms = now;
-    }
-}*/
-
-void ModeDrive::run()
+void ModeDrive::run() // double loop
 {
     static uint32_t last_log_ms = 0;
     const uint32_t now = AP_HAL::millis();
@@ -79,17 +49,18 @@ void ModeDrive::run()
         return;
     }
 
+    const uint32_t now_us = AP_HAL::micros();
+
     /* =====================================================
-     * 1) RC3 입력만 사용 (전/후진)
+     * 1) RC3 입력 사용 (전/후진)
      *    RC3: 1500 중립, 1400~1600 사용
      * ===================================================== */
-    const float rc3 = channel_pitch->norm_input();   // -1.0 ~ +1.0
-
+    const float rc3 = -1 * channel_pitch->norm_input();   // -1.0 ~ +1.0
     // PWM 기준 forward 값 (-100 ~ +100)
     const int16_t forward = constrain(rc3 * 100.0f, -100, 100);
 
     /* =====================================================
-     * 2) 현재 자세 quaternion
+     * 2) 현재 자세 quaternion 취득
      * ===================================================== */
     Quaternion q_now;
     if (!copter.ahrs.get_quaternion(q_now)) {
@@ -97,8 +68,7 @@ void ModeDrive::run()
     }
 
     /* =====================================================
-     * 3) 목표 quaternion
-     *    (예시: 고정, 실제로는 진입 시 latch 권장)
+     * 3) 목표 quaternion (직진 기준)
      * ===================================================== */
     Quaternion q_target( // pitch 30deg
         0.9659258f,      // w
@@ -141,7 +111,7 @@ void ModeDrive::run()
     u_axis.normalize();
 
     /* =====================================================
-     * 7) θ₂ 계산
+     * 7) θ₂ 계산 (커브 반영)
      * ===================================================== */
     const float theta2 = rotvec.dot(u_axis);   // [rad]
 
@@ -169,9 +139,10 @@ void ModeDrive::run()
     /* =====================================================
      * 10) 좌/우 바퀴 PWM (1400~1600)
      * ===================================================== */
+    //const int16_t pwm_L = constrain(1500 + forward, 1400, 1600);
+    //const int16_t pwm_R = constrain(1500 + forward, 1400, 1600);
     const int16_t pwm_L = constrain(1500 + forward + delta, 1400, 1600);
     const int16_t pwm_R = constrain(1500 + forward - delta, 1400, 1600);
-
     write_drive_motors(pwm_L, pwm_R);
 
     /* =====================================================
@@ -180,13 +151,30 @@ void ModeDrive::run()
     if (now - last_log_ms > 1000) {
         gcs().send_text(MAV_SEVERITY_INFO,
             "RC3: %.2f | theta2: %.3f | theta2_dot: %.3f",
-            rc3, theta2, theta2_dot);
+            rc3,theta2, theta2_dot);
 
         gcs().send_text(MAV_SEVERITY_INFO,
             "PWM L/R: %d / %d | delta: %d",
             pwm_L, pwm_R, delta);
 
         last_log_ms = now;
+    }
+
+    /* =====================================================
+    * 12) .bin 로그 조건부 기록
+    * ===================================================== */
+    static uint32_t last_log_us = 0;
+
+    if (log_enable && (now_us - last_log_us > 50000)) { // 20 Hz
+        AP::logger().Write(
+            "UHD2",
+            "TimeUS,heading",
+            "Qf",
+            AP_HAL::micros64(),
+            theta2
+        );
+
+        last_log_us = now_us;
     }
 }
 

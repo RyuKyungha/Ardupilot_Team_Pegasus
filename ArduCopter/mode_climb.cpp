@@ -3,6 +3,7 @@
 #include <AP_HAL/AP_HAL.h>
 #include <SRV_Channel/SRV_Channel.h>
 #include <AP_Math/quaternion.h>
+#include <AP_Logger/AP_Logger.h>
 
 #if MODE_CLIMB_ENABLED
 
@@ -33,12 +34,12 @@ static constexpr float UZ = -0.8660254f;
 
 // 5차 다항식 계수 (deg 기준)
 // theta3 = a0 + a1*theta2 + ... + a5*theta2^5
-static constexpr float A0 = -4.86946108f;
-static constexpr float A1 = -5.18465967e+01f;
-static constexpr float A2 =  7.59618559e-03f;
-static constexpr float A3 =  8.03983134f;
-static constexpr float A4 = -2.28529105e-03f;
-static constexpr float A5 = -9.51971564e-01f;
+static constexpr float A0 = -3.68758925f;
+static constexpr float A1 =  5.89591294f;
+static constexpr float A2 =  6.55444525f;
+static constexpr float A3 = -3.60187384e+01f;
+static constexpr float A4 = -1.65223999f;
+static constexpr float A5 =  9.58412665f;
 
 // ==============================
 // 초기 진입
@@ -48,15 +49,13 @@ ModeClimb::ModeClimb() : Mode() {}
 
 bool ModeClimb::init(bool ignore_checks)
 {
-    gcs().send_text(MAV_SEVERITY_INFO,
-                    "ModeClimb: init");
+    gcs().send_text(MAV_SEVERITY_INFO, "ModeClimb: init");
 
     // SERVO7 점유 (timeout 길게)
-    SRV_Channels::set_output_pwm_chan_timeout(
-        SERVO_CH,
-        PWM_CENTER,
-        100
-    );
+    SRV_Channels::set_output_pwm_chan_timeout(SERVO_CH, PWM_CENTER, 100);
+    
+    log_enable = true;
+    AP::logger().Write("UHD2", "event", "s", "START");
 
     return true;
 }
@@ -68,14 +67,12 @@ bool ModeClimb::init(bool ignore_checks)
 void ModeClimb::exit()
 {
     // override 해제
-    SRV_Channels::set_output_pwm_chan_timeout(
-        SERVO_CH,
-        0,
-        0
-    );
+    SRV_Channels::set_output_pwm_chan_timeout(SERVO_CH, 0, 0);
 
-    gcs().send_text(MAV_SEVERITY_INFO,
-                    "ModeClimb: exit");
+    gcs().send_text(MAV_SEVERITY_INFO, "ModeClimb: exit");
+
+    AP::logger().Write("UHD2", "event", "s", "END");
+    log_enable = false;
 }
 
 // ==============================
@@ -84,9 +81,6 @@ void ModeClimb::exit()
 
 void ModeClimb::run()
 {
-    static uint32_t last_log_ms = 0;
-    uint32_t now = AP_HAL::millis();
-
     // --------------------------------------------------
     // 1) Current quaternion (Body -> Earth)
     // --------------------------------------------------
@@ -94,9 +88,13 @@ void ModeClimb::run()
     if (!copter.ahrs.get_quaternion(q_now)) {
         return;
     }
+    const uint32_t now_us = AP_HAL::micros();
 
+    const float rc3 = -1 * channel_pitch->norm_input();   // -1.0 ~ +1.0
+    const int16_t forward = constrain(rc3 * 100.0f, -100, 100); //-100 ~ +100
+    
     // --------------------------------------------------
-    // 2) Target quaternion (example: yaw +30 deg)
+    // 2) Target quaternion
     // --------------------------------------------------
     Quaternion q_target( // pitch 120deg
         0.5,             // w
@@ -160,39 +158,52 @@ void ModeClimb::run()
 
     // --------------------------
     // 8) theta3 → PWM
-    const float pwm_f =
-        PWM_CENTER + SERVO_GAIN * theta3;
+    const float pwm_f = PWM_CENTER + SERVO_GAIN * theta3;
+    const int16_t pwm = (int16_t)constrain(pwm_f, PWM_MIN, PWM_MAX);
 
-    const int16_t pwm =
-        (int16_t)constrain(pwm_f, PWM_MIN, PWM_MAX);
+    const float Kp_theta = 2.5f;
+    float theta2_dot_cmd = -Kp_theta * theta2;
+    theta2_dot_cmd = constrain(theta2_dot_cmd, -1.0f, 1.0f); // rad/s 제한
 
-    // 9) 출력
-    //SRV_Channels::set_output_pwm_chan_timeout(SERVO_CH, pwm, 100);
+    const Vector3f gyro = ahrs.get_gyro();     // rad/s
+    const float theta2_dot = gyro.dot(u_axis);
+
+    const float theta2_dot_err = theta2_dot_cmd - theta2_dot;
+
+    const float Kp_rate = 80.0f;               // PWM / (rad/s)
+    int16_t delta = (int16_t)(Kp_rate * theta2_dot_err);
+
+    delta = constrain(delta, -50, 50);
+
+    const int16_t pwm_L = constrain(1500 + forward + delta, 1400, 1600);
+    const int16_t pwm_R = constrain(1500 + forward - delta, 1400, 1600);
+
     hal.rcout->write(6, pwm);
+    write_drive_motors(pwm_L, pwm_R);
 
-    // 7) 디버깅 출력
-    if (now - last_log_ms > 1000) {  // 1초 간격으로만 출력
-        gcs().send_text(
-            MAV_SEVERITY_INFO,
-            "q_now   = [%.4f %.4f %.4f %.4f]",
-            q_now.q1, q_now.q2, q_now.q3, q_now.q4
+    /* =====================================================
+    * 12) .bin 로그 조건부 기록
+    * ===================================================== */
+    static uint32_t last_log_us = 0;
+
+    if (log_enable && (now_us - last_log_us > 50000)) { // 20 Hz
+        AP::logger().Write(
+            "UHD2",
+            "TimeUS,heading",
+            "Qf",
+            AP_HAL::micros64(),
+            theta2
         );
 
-        gcs().send_text(
-            MAV_SEVERITY_INFO,
-            "q_tgt   = [%.4f %.4f %.4f %.4f]",
-            q_target.q1, q_target.q2, q_target.q3, q_target.q4
-        );
-        gcs().send_text(
-            MAV_SEVERITY_INFO,
-            "CLIMB[u-tilt] | "
-            "t2=%.1f deg | t3=%.1f deg | pwm=%d",
-            theta2 * 180.0f / M_PI,
-            theta3 * 180.0f / M_PI,
-            pwm
-        );
-        last_log_ms = now;
+        last_log_us = now_us;
     }
+
+}
+
+void ModeClimb::write_drive_motors(int16_t left_pwm, int16_t right_pwm)
+{
+    hal.rcout->write(0, left_pwm);  // Motor1: 좌측 바퀴
+    hal.rcout->write(2, right_pwm); // Motor2: 우측 바퀴
 }
 
 #endif // MODE_CLIMB_ENABLED

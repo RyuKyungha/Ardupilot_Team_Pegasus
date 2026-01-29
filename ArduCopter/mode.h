@@ -1899,6 +1899,8 @@ public:
 
 private:
     void write_drive_motors(int16_t left_pwm, int16_t right_pwm);
+
+    bool log_enable = false;
 };
 #endif
 
@@ -1925,7 +1927,10 @@ public:
 
 private:
     void write_drive_motors(int16_t left_pwm, int16_t right_pwm);
+
+    bool log_enable = false;
 };
+
 float cubic_interpolate(float x, float x0, float x1, float y0, float y1);
 float get_thrust_from_pitch(float thetaDeg);
 #endif
