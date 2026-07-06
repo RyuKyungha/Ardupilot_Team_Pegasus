@@ -153,8 +153,8 @@ void ModeDrive::run() // double loop
     /* =====================================================
      * 10) 좌/우 바퀴 PWM (1400~1600)
      * ===================================================== */
-    const int16_t pwm_L = constrain(1500 + forward + delta, 1400, 1600);
-    const int16_t pwm_R = constrain(1500 + forward - delta, 1400, 1600);
+    const int16_t pwm_L = constrain(1500 + forward-+ delta, 1400, 1600);
+    const int16_t pwm_R = constrain(1500 + forward + delta, 1400, 1600);
     write_drive_motors(pwm_L, pwm_R);
 
     /* =====================================================

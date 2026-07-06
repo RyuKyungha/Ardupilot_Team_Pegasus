@@ -20,7 +20,6 @@
   implementation. Several of the functions below are based on
   betaflight equivalent functions
  */
-
 #include "AP_BLHeli.h"
 
 #if HAVE_AP_BLHELI_SUPPORT
@@ -1690,5 +1689,4 @@ void AP_BLHeli::update_telemetry(void)
         }
     }
 }
-
 #endif // HAVE_AP_BLHELI_SUPPORT
